@@ -28,10 +28,11 @@ type Joiner struct {
 
 type Model struct {
 	TableName string
+	PK        string
 	DbClient  *database.DbClient
 
 	FieldMap map[string]DbField
-	FkModels []FkModel
+	FkModels map[string]FkModel
 
 	PreparedJoins     map[string]Joiner
 	PreparedSelectors map[string]exp.AliasedExpression
@@ -54,6 +55,9 @@ func (m *Model) InitFields(model interface{}) {
 	if m.FieldMap == nil {
 		m.FieldMap = make(map[string]DbField)
 	}
+	if m.FkModels == nil {
+		m.FkModels = make(map[string]FkModel)
+	}
 	if m.PreparedJoins == nil {
 		m.PreparedJoins = make(map[string]Joiner)
 	}
@@ -63,18 +67,28 @@ func (m *Model) InitFields(model interface{}) {
 
 	rValue := reflect.ValueOf(model).Elem()
 	rType := rValue.Type()
-
 	for i := 0; i < rType.NumField(); i++ {
+		isPkField := false
 		field := rType.Field(i)
 		if field.Name == "Model" {
 			continue
 		}
 
+		typeTag := field.Tag.Get("type")
+		if typeTag != "" {
+			if typeTag == "virtual" {
+				continue
+			}
+			if typeTag == "pk" {
+				isPkField = true
+			}
+		}
+
 		// Обработка FK
-		dbTypeTag := field.Tag.Get("fk")
-		if dbTypeTag != "" {
+		dbFkTag := field.Tag.Get("fk")
+		if dbFkTag != "" {
 			asNameValue := field.Tag.Get("db")
-			values := strings.Split(dbTypeTag, ",")
+			values := strings.Split(dbFkTag, ",")
 			if len(values) == 2 {
 				fkModelInterface := rValue.Field(i).Addr().Interface() // Получение интерфейса из reflect.Value
 				InitTable(fkModelInterface, m.DbClient)                // Инициализация с интерфейсом
@@ -93,7 +107,7 @@ func (m *Model) InitFields(model interface{}) {
 							fkModel.As = fkModel.Model.TableName
 						}
 
-						m.FkModels = append(m.FkModels, fkModel) // Добавляем инициализированную модель
+						m.FkModels[fkModel.As] = fkModel // Добавляем инициализированную модель
 					}
 				}
 				continue
@@ -117,6 +131,9 @@ func (m *Model) InitFields(model interface{}) {
 			dbField.AsValue = fieldName
 		}
 		m.FieldMap[field.Name] = dbField
+		if isPkField {
+			m.PK = asNameValue
+		}
 	}
 
 	m.PrepareJoins("")
@@ -167,9 +184,158 @@ func (m *Model) PrepareSelectors(prefix, tableName string) {
 
 }
 
-func (m *Model) Query() *QueryBuilder {
-	return &QueryBuilder{
-		Model:    m,
-		DbClient: m.DbClient,
+func (m *Model) FindField(input string) (exp.AliasedExpression, bool) {
+	parts := strings.Split(input, "__")
+	return m.findFieldRecursive(parts)
+}
+
+func (m *Model) findFieldRecursive(parts []string) (exp.AliasedExpression, bool) {
+	// Если у нас всего одна часть, это конечное поле.
+	if len(parts) == 1 {
+		field, exists := m.PreparedSelectors[parts[0]]
+		return field, exists
 	}
+
+	// Иначе, ищем вложенную модель и рекурсивно ищем в ней.
+	if nextModel, exists := m.FkModels[parts[0]]; exists {
+		return nextModel.Model.findFieldRecursive(parts[1:])
+	}
+
+	// Если мы здесь, это означает, что вложенная модель не найдена.
+	return nil, false
+}
+
+func (m *Model) FindJoiner(path string) (*Joiner, bool) {
+	parts := strings.Split(path, "__")
+
+	if joiner, exists := m.PreparedJoins[parts[0]]; exists {
+		if len(parts) == 1 {
+			return &joiner, true
+		}
+
+		// Если у нас есть FKModel для этого имени, ищем далее
+		if nextModel, hasModel := m.FkModels[parts[0]]; hasModel {
+			return nextModel.Model.FindJoiner(strings.Join(parts[1:], "__"))
+		}
+	}
+	return nil, false
+}
+
+func (m *Model) joinAll(dataset *goqu.SelectDataset) *goqu.SelectDataset {
+	for _, joiner := range m.PreparedJoins {
+		dataset = dataset.LeftJoin(joiner.Table, joiner.On)
+	}
+	for _, fkModel := range m.FkModels {
+		dataset = fkModel.Model.joinAll(dataset)
+	}
+	return dataset
+}
+
+func (m *Model) join(dataset *goqu.SelectDataset, joiner Joiner) *goqu.SelectDataset {
+	dataset = dataset.LeftJoin(joiner.Table, joiner.On)
+	return dataset
+}
+
+func (m *Model) getSelectFields() []interface{} {
+	var result []interface{}
+	for _, field := range m.PreparedSelectors {
+		result = append(result, field)
+	}
+	for _, fkModel := range m.FkModels {
+		result = append(result, fkModel.Model.getSelectFields()...)
+	}
+	return result
+}
+
+func (m *Model) Select(fields ...string) *SelectDataset {
+	dataset := goqu.From(m.TableName)
+	if len(fields) == 0 { // Выполнение полного Select при условии, что пользователь не указал ограничений по полям
+		dataset = m.joinAll(dataset)
+		selectFields := m.getSelectFields()
+		dataset = dataset.Select(selectFields...)
+	} else { // В случае если указаны некоторые поля, то выполняем частичный селект только с необходимыми полями и JOIN
+		var selectors []interface{}
+		joinedPaths := make(map[string]bool)
+		for _, field := range fields {
+			fieldSelector, ok := m.FindField(field)
+			if !ok {
+				panic(fmt.Errorf("field %s can not be found in model %s", field, m.TableName))
+			}
+
+			// Проверяем, требуется ли JOIN для данного поля
+			parts := strings.Split(field, "__")
+			if len(parts) > 1 {
+				path := parts[0]
+				for i := 1; i < len(parts); i++ {
+					if !joinedPaths[path] {
+						joiner, found := m.FindJoiner(path)
+						if !found {
+							panic(fmt.Errorf("joiner for path %s cannot be found", path))
+						}
+						dataset = m.join(dataset, *joiner)
+						joinedPaths[path] = true
+					}
+					path += "__" + parts[i]
+				}
+			}
+
+			selectors = append(selectors, fieldSelector)
+		}
+		dataset = dataset.Select(selectors...)
+	}
+	return &SelectDataset{
+		Model:   m,
+		Dataset: dataset,
+	}
+}
+
+func (m *Model) Save(instance interface{}) {
+	rValue := reflect.ValueOf(instance).Elem()
+	rType := rValue.Type()
+	tableName := ""
+	pkName := ""
+	var pkValue interface{}
+	fields := goqu.Record{}
+	for i := 0; i < rType.NumField(); i++ {
+		isPkField := false
+		field := rType.Field(i)
+		if field.Name == "Model" && field.Type == reflect.TypeOf(Model{}) {
+			tableName = field.Tag.Get("table")
+			continue
+		}
+
+		typeTag := field.Tag.Get("type")
+		if typeTag != "" {
+			if typeTag == "virtual" {
+				continue
+			}
+			if typeTag == "pk" {
+				isPkField = true
+			}
+		}
+
+		dbFkTag := field.Tag.Get("fk")
+		if dbFkTag != "" {
+			continue
+		}
+
+		fieldName := ""
+		nameTag := field.Tag.Get("db_name")
+		if nameTag != "" {
+			fieldName = nameTag
+		} else {
+			fieldName = toSnakeCase(field.Name)
+		}
+		if isPkField {
+			pkName = fieldName
+			pkValue = rValue.Field(i).Interface()
+		} else {
+			fields[fieldName] = rValue.Field(i).Interface()
+		}
+	}
+	query, _, err := goqu.Update(tableName).Set(fields).Where(goqu.Ex{pkName: pkValue}).ToSQL()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(query)
 }

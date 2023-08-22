@@ -2,20 +2,27 @@ package models
 
 import (
 	"github.com/doug-martin/goqu/v9"
+	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/georgysavva/scany/v2/pgxscan"
 )
 
 type SelectDataset struct {
-	Builder *QueryBuilder
+	Model   *Model
 	Dataset *goqu.SelectDataset
 }
 
 func (sd *SelectDataset) Scan(dst interface{}) error {
 	query, _, _ := sd.Dataset.ToSQL()
-	err := pgxscan.Select(sd.Builder.DbClient.Ctx, sd.Builder.DbClient.Pool, dst, query)
+	err := pgxscan.Select(sd.Model.DbClient.Ctx, sd.Model.DbClient.Pool, dst, query)
 	return err
 }
 
-func (sd *SelectDataset) Where() {
+func (sd *SelectDataset) Where(expressions ...exp.Expression) *SelectDataset {
+	sd.Dataset = sd.Dataset.Where(expressions...)
+	return sd
+}
 
+func (sd *SelectDataset) String() string {
+	query, _, _ := sd.Dataset.ToSQL()
+	return query
 }

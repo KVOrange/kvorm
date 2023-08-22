@@ -15,3 +15,6 @@ type (
 func InitTable(model interface{}, client *DbClient) {
 	models.InitTable(model, client)
 }
+func InitAllModels(modelsStruct interface{}, client *database.DbClient) {
+	models.InitAllModels(modelsStruct, client)
+}

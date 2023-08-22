@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgtype"
 	"kvorm_lib/config"
 	database "kvorm_lib/database/models"
 	"kvorm_lib/libraries/kvorm"
@@ -29,9 +30,20 @@ func main() {
 		panic(fmt.Sprintf(`Database init with error: %s`, err))
 	}
 
+	type Models struct {
+		Person database.Person
+	}
+
+	var models Models
+	kvorm.InitAllModels(&models, &dbClient)
+
+	query := models.Person.Select("id", "jobber__city__id").String()
+	fmt.Println(query)
+
 	var person database.Person
-	kvorm.InitTable(&person, &dbClient)
-
-	person.Query().Select()
-
+	person.Id = pgtype.Int8{Int64: 1, Valid: true}
+	person.Fio = pgtype.Text{String: "ВОРОНКИН КИРИЛЛ", Valid: true}
+	person.Code = pgtype.Text{String: "999", Valid: true}
+	person.IsFired = pgtype.Bool{Bool: false, Valid: true}
+	models.Person.Save(&person)
 }

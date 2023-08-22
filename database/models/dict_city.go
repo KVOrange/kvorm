@@ -36,7 +36,7 @@ type JobTitle struct {
 type Person struct {
 	kvorm.Model `table:"person"`
 
-	Id      pgtype.Int8 `json:"id"`
+	Id      pgtype.Int8 `json:"id" type:"pk"`
 	Code    pgtype.Text `json:"code"`
 	Fio     pgtype.Text `json:"fio"`
 	IsFired pgtype.Bool `json:"is_fired"`
