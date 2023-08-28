@@ -27,15 +27,15 @@ type Joiner struct {
 }
 
 type Model struct {
-	TableName string
-	PK        string
-	DbClient  *database.DbClient
+	TableName string             `json:"-"`
+	PK        string             `json:"-"`
+	DbClient  *database.DbClient `json:"-"`
 
-	FieldMap map[string]DbField
-	FkModels map[string]FkModel
+	FieldMap map[string]DbField `json:"-"`
+	FkModels map[string]FkModel `json:"-"`
 
-	PreparedJoins     map[string]Joiner
-	PreparedSelectors map[string]exp.AliasedExpression
+	PreparedJoins     map[string]Joiner                `json:"-"`
+	PreparedSelectors map[string]exp.AliasedExpression `json:"-"`
 }
 
 func (m *Model) ExtractTableName(v interface{}) {
@@ -289,7 +289,7 @@ func (m *Model) Select(fields ...string) *SelectDataset {
 	}
 }
 
-func (m *Model) Save(instance interface{}) {
+func (m *Model) Save(instance interface{}) error {
 	rValue := reflect.ValueOf(instance).Elem()
 	rType := rValue.Type()
 	tableName := ""
@@ -333,9 +333,7 @@ func (m *Model) Save(instance interface{}) {
 			fields[fieldName] = rValue.Field(i).Interface()
 		}
 	}
-	query, _, err := goqu.Update(tableName).Set(fields).Where(goqu.Ex{pkName: pkValue}).ToSQL()
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println(query)
+	query, _, _ := goqu.Update(tableName).Set(fields).Where(goqu.Ex{pkName: pkValue}).ToSQL()
+	_, err := m.DbClient.Pool.Exec(m.DbClient.Ctx, query)
+	return err
 }
