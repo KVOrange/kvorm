@@ -1,4 +1,4 @@
-module kvorm_lib
+module kvorm
 
 go 1.21.0
 
@@ -6,7 +6,6 @@ require (
 	github.com/doug-martin/goqu/v9 v9.18.0
 	github.com/georgysavva/scany/v2 v2.0.0
 	github.com/jackc/pgx/v5 v5.4.3
-	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
