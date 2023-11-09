@@ -1,4 +1,4 @@
-module kvorm
+module github.com/KVOrange/kvorm
 
 go 1.21.0
 
