@@ -1,4 +1,4 @@
-package database
+package kvorm
 
 type DbConfig struct {
 	Host      string

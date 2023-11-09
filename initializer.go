@@ -1,23 +1,20 @@
-package models
+package kvorm
 
 import (
-	"kvorm_lib/libraries/kvorm/database"
 	"reflect"
 )
 
-func InitTable(model interface{}, client *database.DbClient) {
+func InitTable(model interface{}, client *DbClient) {
 	if tabler, ok := model.(interface {
-		ExtractTableName(interface{})
 		InitFields(interface{})
-		InitConnection(dbClient *database.DbClient)
+		InitConnection(dbClient *DbClient)
 	}); ok {
-		tabler.ExtractTableName(model)
 		tabler.InitFields(model)
 		tabler.InitConnection(client)
 	}
 }
 
-func InitAllModels(modelsStruct interface{}, client *database.DbClient) {
+func InitAllModels(modelsStruct interface{}, client *DbClient) {
 	rValue := reflect.ValueOf(modelsStruct).Elem()
 
 	for i := 0; i < rValue.NumField(); i++ {
