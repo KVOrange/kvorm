@@ -6,6 +6,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type DbConfig struct {
+	Host      string
+	Port      int
+	User      string
+	Password  string
+	Name      string
+	PollCount int32
+}
+
 type DbClient struct {
 	Ctx  context.Context
 	Pool *pgxpool.Pool
@@ -26,17 +35,14 @@ func (cli *DbClient) Connect(ctx context.Context, cfg DbConfig) error {
 	}
 	pgxConfig.MaxConns = cfg.PollCount
 
-	db, err := pgxpool.NewWithConfig(context.Background(), pgxConfig)
+	db, err := pgxpool.NewWithConfig(ctx, pgxConfig)
 	if err != nil {
 		return err
 	}
 
-	pingErr := db.Ping(context.Background())
-	if pingErr != nil {
-		return pingErr
-	}
-	if db == nil {
-		return fmt.Errorf("Ошибка соединения с базой данных")
+	err = db.Ping(ctx)
+	if err != nil {
+		return err
 	}
 
 	cli.Pool = db

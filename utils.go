@@ -5,6 +5,8 @@ import (
 	"unicode"
 )
 
+const SEPARATOR = "__"
+
 func toSnakeCase(str string) string {
 	var result string
 	var words []string
@@ -69,12 +71,4 @@ func insertRecursively(data map[string]interface{}, keys []string, value interfa
 
 	subMap, _ := data[keys[0]].(map[string]interface{})
 	insertRecursively(subMap, keys[1:], value)
-}
-
-func replaceLastSeparator(s string, separator string) string {
-	parts := strings.Split(s, SEPARATOR)
-	if len(parts) <= 1 {
-		return s
-	}
-	return strings.Join(parts[:len(parts)-1], separator) + "." + parts[len(parts)-1]
 }

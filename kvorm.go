@@ -1,19 +1,31 @@
 package kvorm
 
-import (
-	"github.com/doug-martin/goqu/v9"
-	"github.com/doug-martin/goqu/v9/exp"
+const (
+	In        = "in"
+	NotIn     = "notIn"
+	Eq        = "eq"
+	NotEq     = "notEq"
+	Like      = "like"
+	NotLike   = "notLike"
+	Regex     = "regex"
+	RegexI    = "regexI"
+	NotRegex  = "notRegex"
+	NotRegexI = "notRegexI"
+	Lt        = "lt"
+	Lte       = "lte"
+	Gt        = "gt"
+	Gte       = "gte"
+	IsNotNull = "isNotNull"
+	IsNull    = "isNull"
 )
 
-type (
-	Ex     = goqu.Ex
-	Record = goqu.Record
-)
-
-func I(ident string) exp.IdentifierExpression {
-	return goqu.I(ident)
+func L(sql string, fields ...ModelField) LiteralExpression {
+	return LiteralExpression{
+		Fields: fields,
+		Format: sql,
+	}
 }
 
-func L(sql string, args ...interface{}) exp.LiteralExpression {
-	return goqu.L(sql, args...)
+func Or(conditions ...Condition) OrCondition {
+	return OrCondition{Conditions: conditions}
 }
