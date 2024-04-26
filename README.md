@@ -4,7 +4,7 @@
 
 ## Installation
 ```sh
-go get github.com/KVOrange/kvorm@0.0.2
+go get github.com/KVOrange/kvorm@0.0.2v
 ```
 
 ##  Quick Start
